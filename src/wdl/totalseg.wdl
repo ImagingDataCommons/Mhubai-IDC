@@ -39,8 +39,8 @@ workflow mhubai_workflow {
    String dicomsegAndRadiomicsSR_CpuFamily = 'AMD Rome' 
 
    String gpuType = 'nvidia-tesla-t4'
-   String gpuZones = "europe-west2-a europe-west2-b asia-northeast1-a asia-northeast1-c asia-southeast1-a asia-southeast1-b asia-southeast1-c us-east4-a us-east4-b us-east4-c"
-   String dicomsegAndRadiomicsSR_Zones = "us-central1-a us-central1-b us-central1-c us-central1-f us-east1-b us-east1-c us-east1-d us-west1-a us-west1-b us-west1-c"
+   String gpuZones = "us-west4-a us-west4-b us-east4-a us-east4-b us-east4-c europe-west2-a europe-west2-b asia-northeast1-a asia-northeast1-c asia-southeast1-a asia-southeast1-b asia-southeast1-c europe-west4-a europe-west4-b europe-west4-c"
+   String dicomsegAndRadiomicsSR_Zones = "asia-northeast2-a asia-northeast2-b asia-northeast2-c europe-west4-a europe-west4-b europe-west4-c europe-north1-a europe-north1-b europe-north1-c us-central1-a us-central1-b us-central1-c us-central1-f us-east1-b us-east1-c us-east1-d us-west1-a us-west1-b us-west1-c"
  }
  #calling mhubai_terra_runner
  call mhubai_terra_runner{
@@ -67,6 +67,7 @@ call dicomsegAndRadiomicsSR{
     inferenceZipFile = mhubai_terra_runner.compressedOutputFile
 }
  output {
+   File? logs = mhubai_terra_runner.logs
    File dicomsegAndRadiomicsSR_OutputNotebook = dicomsegAndRadiomicsSR.dicomsegAndRadiomicsSR_OutputJupyterNotebook   
    File dicomsegAndRadiomicsSR_UsageMetrics  = dicomsegAndRadiomicsSR.dicomsegAndRadiomicsSR_UsageMetrics
    File dicomsegAndRadiomicsSR_CompressedFiles = dicomsegAndRadiomicsSR.dicomsegAndRadiomicsSR_CompressedFiles
@@ -129,10 +130,11 @@ task mhubai_terra_runner{
     cd /app
     
     # Run mhubio.run with the provided config or the default config
-    python3 -m mhubio.run --config ~{select_first([mhubai_custom_config, "/app/models/totalsegmentator/config/default.yml"])} --print
+    python3 -m mhubio.run --config ~{select_first([mhubai_custom_config, "/app/models/totalsegmentator/config/default.yml"])} --debug
     
     # Compress output data and move it to Cromwell root directory
     tar -C /app/data -cvf - output_data | lz4 > /cromwell_root/output.tar.lz4
+    tar -C /app/data/_global -cvf - mhub_log | lz4 > /cromwell_root/mhub_log.tar.lz4
     mv /app/data/output_data/* /cromwell_root/
  }
  #Run time attributes:
@@ -150,6 +152,7 @@ task mhubai_terra_runner{
  }
  output {
    File compressedOutputFile  = "output.tar.lz4"
+   File? logs = "mhub_log.tar.lz4"
  }
 }
 #Task Definitions
@@ -190,7 +193,7 @@ task dicomsegAndRadiomicsSR{
    memory: dicomsegAndRadiomicsSR_RAM + " GiB"
    disks: "local-disk 10 HDD"  #ToDo: Dynamically calculate disk space using the no of bytes of yaml file size. 64 characters is the max size I found in a seriesInstanceUID
    preemptible: dicomsegAndRadiomicsSR_PreemptibleTries
-   maxRetries: 3
+   maxRetries: 1
  }
  output {
    File dicomsegAndRadiomicsSR_OutputJupyterNotebook = "mhub_dicomsegAndRadiomicsSR_Notebook.ipynb"
